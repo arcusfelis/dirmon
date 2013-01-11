@@ -1,5 +1,5 @@
 -module(dirmon).
--export([new/1, check/3]).
+-export([new/1, check/3, match/2]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -10,14 +10,16 @@
 new(FileName) ->
     case file:read_file_info(FileName) of
         {ok, #file_info{type = directory, mtime = MTime}} ->
-            SubFileNames = lists:usort(file:list_dir(FileName)),
-            SubFileRecs = [new(X) || X <- SubFileNames],
+            {ok, SubFileNames} = file:list_dir(FileName),
+            SubFileRecs = [new(filename:join(FileName, X))
+                           || X <- lists:usort(SubFileNames)],
             %% file or symlink.
             D = #directory{basename = filename:basename(FileName),
                            fullname = FileName,
                            mtime = MTime, 
-                           sub_files = [X || X=#file{} <- SubFileRecs],
-                           sub_directories = [X || X=#directory{} <- SubFileRecs]},
+                           %% Ignore errors.
+                           sub_files = [X || {ok, X=#file{}} <- SubFileRecs],
+                           sub_directories = [X || {ok, X=#directory{}} <- SubFileRecs]},
             {ok, D};
         {ok, #file_info{mtime = MTime}} ->
             F = #file{basename = filename:basename(FileName), 
@@ -33,9 +35,10 @@ check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles,
                    sub_directories = SubDirs}, Time, Events) ->
     case file:read_file_info(FileName) of
         {ok, #file_info{type = directory, mtime = MTime}} ->
-            %% Same, check sub-directories.
-            {SubDirs2, Events2} = sub_dir_check(SubDirs, Time, Events),
-            {ok, X#directory{sub_directories = SubDirs2}, Events2};
+            %% File list is the same, check sub-directories and files.
+            {SubDirs2,  Events2} = sub_dir_check(SubDirs, Time, Events),
+            {SubFiles2, Events3} = sub_file_check(SubFiles, Time, Events2),
+            {ok, X#directory{sub_directories = SubDirs2, sub_files = SubFiles2}, Events3};
             
         {ok, #file_info{type = directory, mtime = NewMTime}} ->
             %% Directory content was changed.
@@ -79,12 +82,26 @@ sub_dir_check([D|Ds], Time, Es, ADs) ->
    end;
 sub_dir_check([], _Time, Es, ADs) ->
     {lists:reverse(ADs), Es}.
+
+
+
+sub_file_check(SubDirs, Time, Events) ->
+    sub_file_check(SubDirs, Time, Events, []).
+
+sub_file_check([F|Fs], Time, Es, AFs) ->
+    case check(F, Time, Es) of
+      {ok, F1, Es1}   -> sub_file_check(Fs, Time, Es1, [F1|AFs]);
+      {error, enoent} -> sub_file_check(Fs, Time, Es, AFs)
+    end;
+sub_file_check([], _Time, Es, AFs) ->
+    {lists:reverse(AFs), Es}.
         
 
 
     
 sub_check(DirName, SubFiles, SubDirs, Time, Events) ->
-    SubFileNames = lists:usort(file:list_dir(DirName)),
+    {ok, SubFileNames} = file:list_dir(DirName),
+    SubFileNames1 = lists:usort(SubFileNames),
     New = fun(BaseName) -> 
             case new(filename:join(DirName, BaseName)) of
                 {ok, Rec} -> Rec;
@@ -100,7 +117,8 @@ sub_check(DirName, SubFiles, SubDirs, Time, Events) ->
                 {error, enoent} -> {Rec, Es}
             end
         end,
-    sub_check(New, Chk, SubFileNames, SubFiles, SubDirs, Events, [], []).
+    sub_check(New, Chk, SubFileNames1, SubFiles, SubDirs, Events, [], []).
+
 
 sub_check(New, Chk, [N|Ns], Fs, [D=#directory{basename = N}|Ds], Es, AFs, ADs) ->
     %% The directory is still here.
@@ -133,4 +151,19 @@ sub_check(_New, _Chk, [], Fs, Ds, Es, AFs, ADs) ->
     
 
 
+
+% match(Events, Pattern) 
+match([{Type, #file{fullname = N}}|Es], Re) ->
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [N|match(Es, Re)];
+        nomatch -> match(Es, Re)
+    end;
+match([{Type, #directory{fullname = N, sub_files = Fs, sub_directories = Ds}}|Es], Re) ->
+    [match([{Type, X}], Re) || X <- Ds] ++
+    [match([{Type, X}], Re) || X <- Fs] ++
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [N|match(Es, Re)];
+        nomatch -> match(Es, Re)
+    end;
+match([], _) -> [].
 

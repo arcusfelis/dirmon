@@ -6,3 +6,5 @@ deps/*
 .eunit
 doc/README.md
 log
+logs/*
+test/dirmon_SUITE_data/*
