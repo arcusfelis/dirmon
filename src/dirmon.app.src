@@ -1,0 +1,10 @@
+{application, dirmon, [
+	{description, "Directory monitor."},
+	{vsn, "0.1.0"},
+	{modules, []},
+	{applications, [
+		kernel,
+		stdlib
+	]},
+	{env, []}
+]}.
