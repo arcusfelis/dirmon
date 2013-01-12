@@ -34,7 +34,12 @@ new(FileName) ->
 check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles, 
                    sub_directories = SubDirs}, Time, Events) ->
     case file:read_file_info(FileName) of
-        {ok, #file_info{type = directory, mtime = MTime}} ->
+        {ok, #file_info{type = directory, mtime = MTime}}
+            when MTime =/= Time ->
+            %% When MTime =:= Time, than there can be a situation,
+            %% when the file was modified and analyse was occured
+            %% at the same perion of time.
+            %%
             %% File list is the same, check sub-directories and files.
             {SubDirs2,  Events2} = sub_dir_check(SubDirs, Time, Events),
             {SubFiles2, Events3} = sub_file_check(SubFiles, Time, Events2),
