@@ -94,8 +94,22 @@ simple_case(Cfg) ->
     {ok, D2, Es} = dirmon:check(D, T, []),
     io:format(user, "Events: ~p~n", [Es]),
     M1 = dirmon:match(Es, "f3"),
-    ?assertEqual([F3], M1),
     io:format(user, "Match: ~p~n", [M1]),
+    ?assertEqual([{added, F3}], M1),
+    T1 = erlang:localtime(),
+    timer:sleep(1000),
+
+    F1 = filename:join([DataDir, d1, f1]),
+    filelib:ensure_dir(F1),
+    ok = touch(F1),
+    {ok, D3, Es2} = dirmon:check(D2, T1, []),
+    io:format(user, "Dir: ~p~n", [D3]),
+    io:format(user, "Events: ~p~n", [Es2]),
+    M2 = dirmon:match(Es2, "f."),
+    io:format(user, "Match: ~p~n", [M2]),
+    ?assertEqual([{added, F1}], M2),
+
+    touch(F1),
     ok.
 
 

@@ -139,8 +139,8 @@ sub_check(New, Chk, [N|_]=Ns, Fs, [D=#directory{basename = DN}|Ds], Es, AFs, ADs
 sub_check(New, Chk, [N|Ns], Fs, Ds, Es, AFs, ADs) ->
     %% N is a new file or directory.
     case New(N) of
-        F=#file{}      -> sub_check(New, Chk, Ns, Fs, Ds, [{new, F}|Es], [F|AFs], ADs);
-        D=#directory{} -> sub_check(New, Chk, Ns, Fs, Ds, [{new, D}|Es], AFs, [D|ADs]);
+        F=#file{}      -> sub_check(New, Chk, Ns, Fs, Ds, [{added, F}|Es], [F|AFs], ADs);
+        D=#directory{} -> sub_check(New, Chk, Ns, Fs, Ds, [{added, D}|Es], AFs, [D|ADs]);
         undefined      -> sub_check(New, Chk, Ns, Fs, Ds, Es, AFs, ADs)
     end;
 sub_check(_New, _Chk, [], Fs, Ds, Es, AFs, ADs) ->
@@ -153,17 +153,20 @@ sub_check(_New, _Chk, [], Fs, Ds, Es, AFs, ADs) ->
 
 
 % match(Events, Pattern) 
-match([{Type, #file{fullname = N}}|Es], Re) ->
-    case re:run(N, Re, [{capture, none}]) of
-        match   -> [N|match(Es, Re)];
-        nomatch -> match(Es, Re)
-    end;
-match([{Type, #directory{fullname = N, sub_files = Fs, sub_directories = Ds}}|Es], Re) ->
-    [match([{Type, X}], Re) || X <- Ds] ++
-    [match([{Type, X}], Re) || X <- Fs] ++
-    case re:run(N, Re, [{capture, none}]) of
-        match   -> [N|match(Es, Re)];
-        nomatch -> match(Es, Re)
-    end;
-match([], _) -> [].
+match([E|Es], Re) ->
+    match1(E, Re) ++ match(Es, Re);
+match([], _Re) ->
+    [].
 
+match1({Type, #file{fullname = N}}, Re) ->
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [{Type, N}];
+        nomatch -> []
+    end;
+match1({Type, #directory{fullname = N, sub_files = Fs, sub_directories = Ds}}, Re) ->
+    [Y || X <- Ds, Y <- match1({Type, X}, Re)] ++
+    [Y || X <- Fs, Y <- match1({Type, X}, Re)] ++
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [{Type, N}];
+        nomatch -> []
+    end.
