@@ -1,3 +1,4 @@
+%% A directory is a list of sub-filenames.
 -module(dirmon).
 -export([new/1, check/3, match/2]).
 
@@ -31,14 +32,18 @@ new(FileName) ->
     end.
 
 
+%% `Time' is a starting time of the previous scanning.
+%% Previous scanning is a scanning when X was generated.
 check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles, 
                    sub_directories = SubDirs}, Time, Events) ->
     case file:read_file_info(FileName) of
         {ok, #file_info{type = directory, mtime = MTime}}
-            when MTime =/= Time ->
-            %% When MTime =:= Time, than there can be a situation,
+            when MTime < Time ->
+            %% When MTime =:=, > Time, than there can be a situation,
             %% when the file was modified and analyse was occured
             %% at the same perion of time.
+            %%
+            %% It is cheap to check it again.
             %%
             %% File list is the same, check sub-directories and files.
             {SubDirs2,  Events2} = sub_dir_check(SubDirs, Time, Events),
@@ -60,11 +65,13 @@ check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles,
     end;
 check(X=#file{fullname = FileName, mtime = MTime}, Time, Events) ->
     case file:read_file_info(FileName) of
-        {ok, #file_info{mtime = directory}} ->
+        {ok, #file_info{type = directory}} ->
             %% Replaced with a directory.
             error(fixme);
 
         {ok, #file_info{mtime = MTime}} ->
+            %% If  MTime < Time, than a file CAN be changed.
+            %% We can use md5sum of the file, but it will be slow.
             {ok, X, Events};
             
         {ok, #file_info{mtime = NewMTime}} ->

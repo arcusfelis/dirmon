@@ -81,35 +81,44 @@ simple_case() ->
 
 simple_case(Cfg) ->
     DataDir = ?config(data_dir, Cfg),
-    {ok, D} = dirmon:new(DataDir),
     T = erlang:localtime(),
+    {ok, D} = dirmon:new(DataDir),
+
     io:format(user, "Time: ~p~n", [T]),
+
+    %% Let T =/= MTime.
     timer:sleep(1000),
     F3 = filename:join(DataDir, f3),
     ok = touch(F3),
 
-    {ok, D1} = dirmon:new(DataDir),
-    io:format(user, "Dir: ~p~n", [D1]),
-
+    T1 = erlang:localtime(),
     {ok, D2, Es} = dirmon:check(D, T, []),
     io:format(user, "Events: ~p~n", [Es]),
     M1 = dirmon:match(Es, "f3"),
     io:format(user, "Match: ~p~n", [M1]),
     ?assertEqual([{added, F3}], M1),
-    T1 = erlang:localtime(),
 
     F1 = filename:join([DataDir, d1, f1]),
     filelib:ensure_dir(F1),
     ok = touch(F1),
-    timer:sleep(1000),
+
+    %% In this situation, T1 can be equal or less that MTime.
+    T2 = erlang:localtime(),
     {ok, D3, Es2} = dirmon:check(D2, T1, []),
-    io:format(user, "Dir: ~p~n", [D3]),
+    io:format(user, "Dir3: ~p~n", [D3]),
     io:format(user, "Events: ~p~n", [Es2]),
     M2 = dirmon:match(Es2, "f."),
     io:format(user, "Match: ~p~n", [M2]),
     ?assertEqual([{added, F1}], M2),
 
-%%  file:delete(F1),
+
+    ok = file:delete(F1),
+    T3 = erlang:localtime(),
+    {ok, D4, Es3} = dirmon:check(D3, T2, []),
+    io:format(user, "Dir4: ~p~n", [D4]),
+    M3 = dirmon:match(Es3, "f."),
+    io:format(user, "Match: ~p~n", [M3]),
+    ?assertEqual([{deleted, F1}], M3),
 
 %%  touch(F1),
     ok.
