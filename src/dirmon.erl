@@ -76,7 +76,7 @@ check(X=#file{fullname = FileName, mtime = MTime}, Time, Events) ->
             
         {ok, #file_info{mtime = NewMTime}} ->
             %% File content was changed.
-            {ok, X#file{mtime = NewMTime}, [{changed, X}|Events]};
+            {ok, X#file{mtime = NewMTime}, [{modified, X}|Events]};
 
         {error, _Reason} = E ->
             %% the directory was deleted.

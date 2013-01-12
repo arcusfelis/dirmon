@@ -112,6 +112,7 @@ simple_case(Cfg) ->
     ?assertEqual([{added, F1}], M2),
 
 
+    %% Check deletion of the F1 file.
     ok = file:delete(F1),
     T3 = erlang:localtime(),
     {ok, D4, Es3} = dirmon:check(D3, T2, []),
@@ -119,6 +120,26 @@ simple_case(Cfg) ->
     M3 = dirmon:match(Es3, "f."),
     io:format(user, "Match: ~p~n", [M3]),
     ?assertEqual([{deleted, F1}], M3),
+
+    %% Check creation after deletion.
+    ok = touch(F1),
+    T4 = erlang:localtime(),
+    {ok, D5, Es4} = dirmon:check(D4, T3, []),
+    M4 = dirmon:match(Es4, "f."),
+    ?assertEqual([{added, F1}], M4),
+
+    %% Check changing.
+    %%
+    %% Without this timer the next check may return an empty list.
+    %% The situation is that old and new mtimes are the same.
+    %% It is because we don't want to compare file hashes.
+    timer:sleep(1000),
+    ok = touch(F1),
+    T5 = erlang:localtime(),
+    {ok, D6, Es5} = dirmon:check(D5, T4, []),
+    M5 = dirmon:match(Es5, "f."),
+    ?assertEqual([{modified, F1}], M5),
+
 
 %%  touch(F1),
     ok.
