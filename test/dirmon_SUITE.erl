@@ -82,7 +82,7 @@ simple_case() ->
 simple_case(Cfg) ->
     DataDir = ?config(data_dir, Cfg),
     T = erlang:localtime(),
-    {ok, D} = dirmon:new(DataDir),
+    {ok, D} = dirmon_lib:new(DataDir),
 
     io:format(user, "Time: ~p~n", [T]),
 
@@ -92,9 +92,9 @@ simple_case(Cfg) ->
     ok = touch(F3),
 
     T1 = erlang:localtime(),
-    {ok, D2, Es} = dirmon:check(D, T, []),
+    {ok, D2, Es} = dirmon_lib:check(D, T, []),
     io:format(user, "Events: ~p~n", [Es]),
-    M1 = dirmon:match(Es, "f3"),
+    M1 = dirmon_lib:match(Es, "f3"),
     io:format(user, "Match: ~p~n", [M1]),
     ?assertEqual([{added, F3}], M1),
 
@@ -104,10 +104,10 @@ simple_case(Cfg) ->
 
     %% In this situation, T1 can be equal or less that MTime.
     T2 = erlang:localtime(),
-    {ok, D3, Es2} = dirmon:check(D2, T1, []),
+    {ok, D3, Es2} = dirmon_lib:check(D2, T1, []),
     io:format(user, "Dir3: ~p~n", [D3]),
     io:format(user, "Events: ~p~n", [Es2]),
-    M2 = dirmon:match(Es2, "f."),
+    M2 = dirmon_lib:match(Es2, "f."),
     io:format(user, "Match: ~p~n", [M2]),
     ?assertEqual([{added, F1}], M2),
 
@@ -115,17 +115,17 @@ simple_case(Cfg) ->
     %% Check deletion of the F1 file.
     ok = file:delete(F1),
     T3 = erlang:localtime(),
-    {ok, D4, Es3} = dirmon:check(D3, T2, []),
+    {ok, D4, Es3} = dirmon_lib:check(D3, T2, []),
     io:format(user, "Dir4: ~p~n", [D4]),
-    M3 = dirmon:match(Es3, "f."),
+    M3 = dirmon_lib:match(Es3, "f."),
     io:format(user, "Match: ~p~n", [M3]),
     ?assertEqual([{deleted, F1}], M3),
 
     %% Check creation after deletion.
     ok = touch(F1),
     T4 = erlang:localtime(),
-    {ok, D5, Es4} = dirmon:check(D4, T3, []),
-    M4 = dirmon:match(Es4, "f."),
+    {ok, D5, Es4} = dirmon_lib:check(D4, T3, []),
+    M4 = dirmon_lib:match(Es4, "f."),
     ?assertEqual([{added, F1}], M4),
 
     %% Check changing.
@@ -136,8 +136,8 @@ simple_case(Cfg) ->
     timer:sleep(1000),
     ok = touch(F1),
     T5 = erlang:localtime(),
-    {ok, D6, Es5} = dirmon:check(D5, T4, []),
-    M5 = dirmon:match(Es5, "f."),
+    {ok, D6, Es5} = dirmon_lib:check(D5, T4, []),
+    M5 = dirmon_lib:match(Es5, "f."),
     ?assertEqual([{modified, F1}], M5),
 
 
