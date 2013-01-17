@@ -20,7 +20,7 @@ new() ->
 add(PS, Re, ClientPid) ->
     {ok, CompiledRe} = re:compile(Re),
     Ref = erlang:monitor(process, ClientPid),
-    {ok, [#p{ref = Ref, pid = ClientPid, re = CompiledRe}|PS], Ref}.
+    {ok, [#p{ref = Ref, pid = ClientPid, re = CompiledRe}|PS], Ref, CompiledRe}.
     
 
 unregister_process(PS, ClientPid) ->

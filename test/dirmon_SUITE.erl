@@ -7,10 +7,10 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([
-        simple_case/0,
-        simple_case/1
-]).
+-export([simple_case/0,
+         simple_case/1,
+         server_case/0,
+         server_case/1]).
 
 %-compile([{parse_transform, lager_transform}]).
 
@@ -66,7 +66,8 @@ directories() ->
 %% ----------------------------------------------------------------------
 groups() ->
     [{main_group, [], [
-        simple_case
+        simple_case,
+        server_case
     ]}].
 
 all() ->
@@ -74,6 +75,9 @@ all() ->
 
 
 simple_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+server_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 -include_lib("eunit/include/eunit.hrl").
@@ -139,11 +143,44 @@ simple_case(Cfg) ->
     {ok, D6, Es5} = dirmon_lib:check(D5, T4, []),
     M5 = dirmon_lib:match(Es5, "f."),
     ?assertEqual([{modified, F1}], M5),
-
-
-%%  touch(F1),
     ok.
 
+
+server_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    {ok, S} = dirmon_server:start_link(DataDir),
+    {ok, Ref} = dirmon_server:monitor(S, ""),
+
+    timer:sleep(1000),
+    F3 = filename:join(DataDir, f3),
+    ok = touch(F3),
+    dirmon_server:update(S),
+
+    %% Wait for a message.
+    ?assertEqual({ok, [{added,F3}]}, wait_event(Ref, 1000)),
+
+
+    D1 = filename:join([DataDir, d1]),
+    F1 = filename:join([DataDir, d1, f1]),
+    filelib:ensure_dir(F1),
+    ok = touch(F1),
+    dirmon_server:update(S),
+    ?assertEqual({ok, [{added, F1}, {added,D1}]}, wait_event(Ref, 1000)),
+
+    ok.
+
+
+
+receive_event(Ref) ->
+    receive
+        {dirmon, Ref, Mess} -> Mess
+    end.
+
+wait_event(Ref, Timeout) ->
+    receive
+        {dirmon, Ref, Mess} -> {ok, Mess}
+    after Timeout -> {error, noevent}
+    end.
 
 %% Helpers
 %% ----------------------------------------------------------------------

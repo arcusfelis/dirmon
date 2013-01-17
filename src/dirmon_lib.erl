@@ -1,6 +1,9 @@
 %% A directory is a list of sub-filenames.
 -module(dirmon_lib).
--export([new/1, check/3, match/2]).
+-export([new/1,
+         check/3,
+         match/2,
+         match_tree/2]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -62,7 +65,7 @@ check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles,
                              mtime = NewMTime},
             {ok, X2, Events2};
 
-        {ok, #file_info{mtime = NewMTime}} ->
+        {ok, #file_info{mtime = _NewMTime}} ->
             %% Replaced with a file.
             error(fixme);
 
@@ -70,7 +73,7 @@ check(X=#directory{fullname = FileName, mtime = MTime, sub_files = SubFiles,
             %% the directory was deleted.
             E
     end;
-check(X=#file{fullname = FileName, mtime = MTime}, Time, Events) ->
+check(X=#file{fullname = FileName, mtime = MTime}, _Time, Events) ->
     case file:read_file_info(FileName) of
         {ok, #file_info{type = directory}} ->
             %% Replaced with a directory.
@@ -190,3 +193,19 @@ match1({Type, D=#directory{}}, Re) ->
         match   -> [{Type, N}];
         nomatch -> []
     end.
+
+
+match_tree({Type, #file{fullname = N}}, Re) ->
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [{Type, N}];
+        nomatch -> []
+    end;
+match_tree(D=#directory{}, Re) ->
+    #directory{fullname = N, sub_files = Fs, sub_directories = Ds} = D,
+    [Y || X <- Ds, Y <- match_tree(X, Re)] ++
+    [Y || X <- Fs, Y <- match_tree(X, Re)] ++
+    case re:run(N, Re, [{capture, none}]) of
+        match   -> [N];
+        nomatch -> []
+    end.
+    
