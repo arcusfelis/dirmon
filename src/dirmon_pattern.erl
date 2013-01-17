@@ -4,7 +4,8 @@
          add/3,
          unregister_process/2,
          unregister_reference/2,
-         patterns/1]).
+         patterns/1,
+         is_empty/1]).
 
 %% pattern is a regular expression as a string.
 %% cpattern is a compiled version of it.
@@ -42,4 +43,9 @@ unregister_reference(PS, Ref) ->
 patterns(Ps) ->
     [{Re, fun(Mess) -> Pid ! {dirmon, Ref, Mess} end}
       || #p{ref = Ref, pid = Pid, re = Re} <- Ps].
+
+
+%% @doc Is anybody here?
+is_empty([])    -> true;
+is_empty([_|_]) -> false.
 

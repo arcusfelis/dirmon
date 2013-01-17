@@ -19,7 +19,15 @@
 
 
 
--record(state, {file_tree, last_scan_begun, patterns}).
+-record(state, {
+    file_tree, 
+    last_scan_begun,
+    patterns, 
+    check_timeout, 
+    exit_timeout,
+    %% A timestamp (in milliseconds)
+    last_timeout_check
+}).
 -record(monitor_msg, {pattern, match}).
 -record(demonitor_msg, {ref}).
 
@@ -40,6 +48,9 @@ start_link(DirName) ->
 %% The default value is infinity.
 %% Event X: the last client unregistered.
 %% Event Y: the server is closed automatically.
+%%
+%%  If `check_timeout' is infinity, than `exit_timeout' will be 
+%%  treated as `infinity'.
 start_link(DirName, Options) ->
     gen_server:start_link(?MODULE, [DirName|Options], []).
 
@@ -78,7 +89,7 @@ init([DirName|Options]) ->
                    last_scan_begun = erlang:localtime(),
                    patterns = Patterns,
                    exit_timeout = ExitTimeout},
-    timer:send_after(CheckTimeout, check),
+    timer:send_interval(CheckTimeout, check),
     {ok, State}.
 
 handle_call(#monitor_msg{pattern = Re, match = false},
@@ -102,8 +113,32 @@ handle_cast(_Mess, State) ->
 
 
 %% Find new files and inform clients.
-handle_info(check, State) ->
-    {noreply, check(State)};
+%% It is a timer.
+%%
+%% The idea is to evaluate `exit_timeout' and `check_timeout' using only
+%% one timeout.
+handle_info(check, 
+            State=#state{patterns = PS,
+                         last_timeout_check = LastCheck,
+                         exit_timeout = ExitTimeout,
+                         check_timeout = CheckTimeout}) ->
+    case dirmon_pattern:is_empty(PS) of
+    %% There are clients, work as usual.
+    false -> {noreply, check(State#state{last_timeout_check=timestamp_ms()})};
+    %% Ignore exit timeout.
+    true when ExitTimeout =:= infinity -> {noreply, State};
+    true ->
+        %% If there are no more new client within at least `ExitTimeout' ms,
+        %% than we will close the server.
+        %%
+        %% For any `LastCheck' this condition is true, when the next case is
+        %% true.
+        case timestamp_ms() - LastCheck > ExitTimeout + CheckTimeout of
+        %% Exit, because no new client was for a long period of time.
+        true -> {stop, normal, State};
+        false -> {noreply, State}
+        end
+    end;
 %% The client is dead.
 handle_info({'DOWN', MonitorRef, _, _, _}, State=#state{patterns = PS}) ->
     {ok, PS2} = dirmon_pattern:unregister_reference(PS, MonitorRef),
@@ -130,3 +165,11 @@ check(State=#state{patterns = PS, file_tree = Tree,
     end,
     State#state{file_tree = Tree2, last_scan_begun = StartTime}.
 
+timestamp_ms() ->
+    timestamp() div 1000.
+
+timestamp() ->
+    timestamp(erlang:now()).
+
+timestamp({Mega, Secs, Micro}) ->
+        Mega*1000*1000*1000*1000 + Secs * 1000 * 1000 + Micro.
