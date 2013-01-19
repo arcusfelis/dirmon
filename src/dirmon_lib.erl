@@ -1,4 +1,5 @@
 %% A directory is a list of sub-filenames.
+%% Events are `modified', `added', `deleted'.
 -module(dirmon_lib).
 -export([new/1,
          check/3,
@@ -195,9 +196,12 @@ match1({Type, D=#directory{}}, Re) ->
     end.
 
 
-match_tree({Type, #file{fullname = N}}, Re) ->
+%% @doc It is a variant of `match/2'. 
+%% It does not uses event types.
+%% It returns a list of filenames.
+match_tree(#file{fullname = N}, Re) ->
     case re:run(N, Re, [{capture, none}]) of
-        match   -> [{Type, N}];
+        match   -> [N];
         nomatch -> []
     end;
 match_tree(D=#directory{}, Re) ->

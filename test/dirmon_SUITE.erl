@@ -10,7 +10,11 @@
 -export([simple_case/0,
          simple_case/1,
          server_case/0,
-         server_case/1]).
+         server_case/1,
+         server_match_and_monitor_case/0,
+         server_match_and_monitor_case/1,
+         pie_case/0,
+         pie_case/1]).
 
 %-compile([{parse_transform, lager_transform}]).
 
@@ -53,6 +57,10 @@ end_per_testcase(_Case, Config) ->
 files() ->
     ["d1/f1"
     ,"d2/f2"
+    ,"d1/1.x"
+    ,"d1/2.x"
+    ,"d2/2.x"
+    ,"d2/3.x"
     ,"f3"
     ].
 
@@ -67,7 +75,9 @@ directories() ->
 groups() ->
     [{main_group, [], [
         simple_case,
-        server_case
+        server_case,
+        server_match_and_monitor_case,
+        pie_case
     ]}].
 
 all() ->
@@ -78,6 +88,12 @@ simple_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 server_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+server_match_and_monitor_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+pie_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 -include_lib("eunit/include/eunit.hrl").
@@ -148,27 +164,63 @@ simple_case(Cfg) ->
 
 server_case(Cfg) ->
     DataDir = ?config(data_dir, Cfg),
-    {ok, S} = dirmon_server:start_link(DataDir),
-    {ok, Ref} = dirmon_server:monitor(S, ""),
+    {ok, S} = dirmon_watcher:start_link(DataDir),
+    {ok, Ref} = dirmon_watcher:monitor(S, ""),
 
     timer:sleep(1000),
     F3 = filename:join(DataDir, f3),
     ok = touch(F3),
-    dirmon_server:update(S),
+    dirmon_watcher:update(S),
 
     %% Wait for a message.
     ?assertEqual({ok, [{added,F3}]}, wait_event(Ref, 1000)),
-
 
     D1 = filename:join([DataDir, d1]),
     F1 = filename:join([DataDir, d1, f1]),
     filelib:ensure_dir(F1),
     ok = touch(F1),
-    dirmon_server:update(S),
+    dirmon_watcher:update(S),
     ?assertEqual({ok, [{added, F1}, {added,D1}]}, wait_event(Ref, 1000)),
 
     ok.
 
+
+server_match_and_monitor_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    {ok, S} = dirmon_watcher:start_link(DataDir),
+    {ok, Match, Ref} = dirmon_watcher:match_and_monitor(S, ""),
+    ok.
+
+
+pie_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D1 = filename:join(DataDir, d1),
+    D2 = filename:join(DataDir, d2),
+    D1F1 = filename:join(D1, "1.x"),
+    D1F2 = filename:join(D1, "2.x"),
+    D2F2 = filename:join(D2, "2.x"),
+    D2F3 = filename:join(D2, "3.x"),
+    ensure_dir(D1),
+    ensure_dir(D2),
+    ok = touch(D2F2),
+    {ok, S1} = dirmon_watcher:start_link(D1),
+    {ok, S2} = dirmon_watcher:start_link(D2),
+    {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
+    {ok, PRef} = dirmon_pie:monitor(P1),
+    dirmon_pie:add_watcher(P1, S1),
+    dirmon_pie:add_watcher(P1, S2),
+    dirmon_watcher:monitor(S1, ""),
+    ok = touch(D1F2),
+    dirmon_watcher:update(S1),
+    timer:sleep(1000),
+    print_mailbox(),
+    ok.
+
+key_maker(FileName) ->
+    BaseName = filename:basename(FileName),
+    Ext      = filename:extension(BaseName),
+    RootName = filename:rootname(BaseName),
+    {RootName, Ext}.
 
 
 receive_event(Ref) ->
@@ -180,6 +232,12 @@ wait_event(Ref, Timeout) ->
     receive
         {dirmon, Ref, Mess} -> {ok, Mess}
     after Timeout -> {error, noevent}
+    end.
+
+print_mailbox() ->
+    receive
+        X -> io:format(user, "Mess: ~p~n", [X]), print_mailbox()
+    after 0 -> ok
     end.
 
 %% Helpers

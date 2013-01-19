@@ -1,4 +1,4 @@
--module(dirmon_server).
+-module(dirmon_watcher).
 -behaviour(gen_server).
 
 %% Client API
@@ -54,6 +54,8 @@ start_link(DirName) ->
 start_link(DirName, Options) ->
     gen_server:start_link(?MODULE, [DirName|Options], []).
 
+
+%% @doc Send `{dirmon, Ref, [{Action, FileName}]}' to the called process.
 monitor(Server, Re) ->
     gen_server:call(Server, #monitor_msg{pattern = Re, match = false}).
 
