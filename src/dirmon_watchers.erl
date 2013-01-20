@@ -1,39 +1,38 @@
 -module(dirmon_watchers).
 -export([new/0,
-         add/3,
+         add/4,
          remove/2,
          exists/2,
-         reference_to_number/2]).
+         tag_to_number/2]).
 
--record(ws, {next_num, pid2ref, ref2num}).
+-record(ws, {next_num, list}).
+-record(w, {pid, tag, mon, num}).
 
 new() ->
-    #ws{next_num = 0, pid2ref = dict:new(), ref2num = dict:new()}.
+    #ws{next_num = 0, list = []}.
 
-add(Pid, Ref, WS=#ws{next_num=Num, pid2ref = P2R, ref2num = R2N}) 
-    when is_reference(Ref) ->
-    P2R2 = dict:store(Pid, Ref, P2R),
-    R2N2 = dict:store(Ref, Num, R2N),
-    {ok, Num, WS#ws{next_num=Num+1, pid2ref=P2R2, ref2num=R2N2}}.
+add(Pid, Tag, Mon, WS=#ws{next_num=Num, list=Ws}) 
+    when is_reference(Tag), is_reference(Mon) ->
+    W = #w{pid=Pid, tag=Tag, mon=Mon, num=Num},
+    {ok, Num, WS#ws{next_num=Num+1, list=[W|Ws]}}.
 
-remove(Pid, WS=#ws{pid2ref = P2R, ref2num = R2N}) ->
-    case dict:find(Pid, P2R) of
-        error ->
-            {error, unknown_watcher};
-        {ok, Ref} ->
-            P2R2 = dict:erase(Pid, P2R),
-            R2N2 = dict:erase(Ref, R2N),
-            {ok, WS#ws{pid2ref=P2R2, ref2num=R2N2}}
+remove(Pid, WS=#ws{list=Ws}) ->
+    case lists:keytake(Pid, #w.pid, Ws) of
+        {value, #w{pid=Pid, tag=Tag, mon=Mon, num=Num}, Ws2} ->
+            {ok, Pid, Tag, Mon, Num, WS#ws{list=Ws2}};
+        false ->
+            {error, unknown_watcher}
     end.
 
-exists(Pid, #ws{pid2ref = P2R}) ->
-    dict:is_key(Pid, P2R).
+exists(Pid, #ws{list=Ws}) ->
+    lists:keymember(Pid, #w.pid, Ws).
 
-reference_to_number(Ref, #ws{ref2num = R2N}) ->
-    case dict:find(Ref, R2N) of
+tag_to_number(Tag, #ws{list=Ws}) ->
+    case lists:keyfind(Tag, #w.tag, Ws) of
+        #w{num=Num} ->
+            {ok, Num};
         error ->
-            {error, unknown_watcher};
-        {ok, Num} ->
-            {ok, Num}
+            {error, unknown_watcher}
     end.
+
 

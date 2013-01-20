@@ -20,7 +20,9 @@
          server_delete2_event_case/0,
          server_delete2_event_case/1,
          simple_delete_event_case/0,
-         simple_delete_event_case/1
+         simple_delete_event_case/1,
+         pie_dynamic_watchers_case/0,
+         pie_dynamic_watchers_case/1
         ]).
 
 %-compile([{parse_transform, lager_transform}]).
@@ -89,7 +91,8 @@ groups() ->
         simple_delete_event_case,
         server_delete_event_case,
         server_delete2_event_case,
-        pie_case
+        pie_case,
+        pie_dynamic_watchers_case
     ]}].
 
 all() ->
@@ -106,6 +109,9 @@ server_match_and_monitor_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 pie_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+pie_dynamic_watchers_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 server_delete_event_case() ->
@@ -289,7 +295,7 @@ pie_case(Cfg) ->
     {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
     dirmon_pie:add_watcher(P1, S1),
     %% No clients will receive `added' event from S1.
-    {ok, _Ref} = dirmon_pie:add_watcher(P1, S2),
+    ok = dirmon_pie:add_watcher(P1, S2),
     %% Start listening.
     {ok, PRef} = dirmon_pie:monitor(P1),
     ok = touch(D1F2),
@@ -311,6 +317,36 @@ pie_case(Cfg) ->
     timer:sleep(1000),
     print_mailbox(),
     ok.
+
+
+%% Test function `remove_watcher'.
+pie_dynamic_watchers_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D1 = filename:join(DataDir, d1),
+    D2 = filename:join(DataDir, d2),
+    D1F2 = filename:join(D1, "2.x"),
+    D2F2 = filename:join(D2, "2.x"),
+    ensure_dir(D1),
+    ensure_dir(D2),
+    ok = touch(D2F2),
+    ok = touch(D1F2),
+    {ok, S1} = dirmon_watcher:start_link(D1),
+    {ok, S2} = dirmon_watcher:start_link(D2),
+    {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
+    dirmon_pie:add_watcher(P1, S1),
+    dirmon_pie:add_watcher(P1, S2),
+
+    {ok, PRef} = dirmon_pie:monitor(P1),
+    dirmon_pie:remove_watcher(P1, S1),
+
+    %% `D1F2' is replaced by `D2F2'.
+    ?assertEqual({ok, {pie, PRef, [{modified, {"2", ".x"}, D2F2}]}},
+                 wait_message(1000)),
+
+    timer:sleep(1000),
+    print_mailbox(),
+    ok.
+
 
 key_maker(FileName) ->
     BaseName = filename:basename(FileName),
