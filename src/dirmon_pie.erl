@@ -78,6 +78,7 @@ init([Re, KeyMaker]) ->
 handle_call(#add_watcher{server = Watcher}, _, 
             State=#state{pattern = Re, watchers = WS, key_maker = KeyMaker,
                          key2filenames = Key2FileNames}) ->
+    io:format(user, "add_watcher: ~p~n", [Watcher]),
     case dirmon_watchers:exists(Watcher, WS) of
     false ->
         %% TODO: Handle `{DOWN,....}'.
@@ -130,7 +131,7 @@ handle_events([{deleted, FN}|Es], Key2FileNames, KeyMaker, ServerNum, Acc) ->
     case dict:find(Key, Key2FileNames) of
         %% File was deleted -> delete a key
         {ok, [Elem]} ->
-            Key2FileNames2 = dict:delete(Key, Key2FileNames),
+            Key2FileNames2 = dict:erase(Key, Key2FileNames),
             Acc2 = [{deleted, Key, FN}|Acc],
             handle_events(Es, Key2FileNames2, KeyMaker, ServerNum, Acc2);
 
@@ -203,7 +204,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %% ----------------------------------------------------------------------
 
+inform_clients([_|_]=Events, #state{clients = [_|_]=Cs}) ->
+    io:format(user, "inform_clients~p ~p~n", [Cs,Events]),
+    [CPid!{pie,CRef,Events} || {CPid,CRef} <- Cs];
 inform_clients([], _) ->
     ok;
-inform_clients([_|_]=Events, #state{clients = Cs}) ->
-    [CPid!{pie,CRef,Events} || {CPid,CRef} <- Cs].
+inform_clients([_|_]=_Events, #state{clients = []}) ->
+    io:format(user, "inform_clients<ignore> ~p~n", [_Events]),
+    ok.

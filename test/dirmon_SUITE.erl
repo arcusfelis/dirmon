@@ -14,7 +14,14 @@
          server_match_and_monitor_case/0,
          server_match_and_monitor_case/1,
          pie_case/0,
-         pie_case/1]).
+         pie_case/1,
+         server_delete_event_case/0,
+         server_delete_event_case/1,
+         server_delete2_event_case/0,
+         server_delete2_event_case/1,
+         simple_delete_event_case/0,
+         simple_delete_event_case/1
+        ]).
 
 %-compile([{parse_transform, lager_transform}]).
 
@@ -41,10 +48,12 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_testcase(_Case, Config) ->
+init_per_testcase(Case, Config) ->
+    io:format(user, "~2nBEGIN TESTCASE ~p~n", [Case]),
     Config.
 
-end_per_testcase(_Case, Config) ->
+end_per_testcase(Case, Config) ->
+    io:format(user, "END TESTCASE ~p~3n", [Case]),
     DataDir = ?config(data_dir, Config),
     io:format(user, "Cleaning~n", []),
     [file:delete(filename:join(DataDir, X)) || X <- files()],
@@ -77,6 +86,9 @@ groups() ->
         simple_case,
         server_case,
         server_match_and_monitor_case,
+        simple_delete_event_case,
+        server_delete_event_case,
+        server_delete2_event_case,
         pie_case
     ]}].
 
@@ -94,6 +106,15 @@ server_match_and_monitor_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 pie_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+server_delete_event_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+server_delete2_event_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+simple_delete_event_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 -include_lib("eunit/include/eunit.hrl").
@@ -182,6 +203,10 @@ server_case(Cfg) ->
     dirmon_watcher:update(S),
     ?assertEqual({ok, [{added, F1}, {added,D1}]}, wait_event(Ref, 1000)),
 
+    ok = file:delete(F1),
+    dirmon_watcher:update(S),
+    ?assertEqual({ok, [{deleted, F1}]}, wait_event(Ref, 1000)),
+
     ok.
 
 
@@ -189,6 +214,62 @@ server_match_and_monitor_case(Cfg) ->
     DataDir = ?config(data_dir, Cfg),
     {ok, S} = dirmon_watcher:start_link(DataDir),
     {ok, Match, Ref} = dirmon_watcher:match_and_monitor(S, ""),
+    ok.
+
+
+%% Add, Start, Delete.
+simple_delete_event_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D2 = filename:join(DataDir, d2),
+    D2F2 = filename:join(D2, "2.x"),
+    ensure_dir(D2),
+    ok = touch(D2F2),
+
+    T = erlang:localtime(),
+    %% DT stands for DirectoryTree.
+    {ok, DT} = dirmon_lib:new(D2),
+
+    %% Check deletion of the F1 file.
+    ok = file:delete(D2F2),
+    {ok, _DT, Es} = dirmon_lib:check(DT, T, []),
+    M = dirmon_lib:match(Es, "\\.x$"),
+    ?assertEqual([{deleted, D2F2}], M),
+    ok.
+
+
+%% It is a minimal test case for the error in `pie_case'.
+%% Add, Start, Delete.
+server_delete_event_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D2 = filename:join(DataDir, d2),
+    D2F2 = filename:join(D2, "2.x"),
+    ensure_dir(D2),
+    ok = touch(D2F2),
+    {ok, S2} = dirmon_watcher:start_link(D2),
+    {ok, Match, Ref} = dirmon_watcher:match_and_monitor(S2, "\\.x$"),
+
+    ok = file:delete(D2F2),
+    dirmon_watcher:update(S2),
+
+    ?assertEqual({ok, [{deleted, D2F2}]}, wait_event(Ref, 1000)),
+    ok.
+
+
+%% Start, Add, Delete.
+server_delete2_event_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D1 = filename:join(DataDir, d2),
+    D1F2 = filename:join(D1, "2.x"),
+    ensure_dir(D1),
+    {ok, S1} = dirmon_watcher:start_link(D1),
+    {ok, Match, Ref} = dirmon_watcher:match_and_monitor(S1, "\\.x$"),
+    ok = touch(D1F2),
+    dirmon_watcher:update(S1),
+    ?assertEqual({ok, [{added, D1F2}]}, wait_event(Ref, 1000)),
+
+    ok = file:delete(D1F2),
+    dirmon_watcher:update(S1),
+    ?assertEqual({ok, [{deleted, D1F2}]}, wait_event(Ref, 1000)),
     ok.
 
 
@@ -206,12 +287,27 @@ pie_case(Cfg) ->
     {ok, S1} = dirmon_watcher:start_link(D1),
     {ok, S2} = dirmon_watcher:start_link(D2),
     {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
-    {ok, PRef} = dirmon_pie:monitor(P1),
     dirmon_pie:add_watcher(P1, S1),
-    dirmon_pie:add_watcher(P1, S2),
-    dirmon_watcher:monitor(S1, ""),
+    %% No clients will receive `added' event from S1.
+    {ok, _Ref} = dirmon_pie:add_watcher(P1, S2),
+    %% Start listening.
+    {ok, PRef} = dirmon_pie:monitor(P1),
     ok = touch(D1F2),
     dirmon_watcher:update(S1),
+    ?assertEqual({ok, {pie, PRef, [{modified, {"2", ".x"}, D1F2}]}},
+                 wait_message(1000)),
+
+    ok = file:delete(D1F2),
+    dirmon_watcher:update(S1),
+    %% `D1F2' is replaced by `D2F2'.
+    ?assertEqual({ok, {pie, PRef, [{modified, {"2", ".x"}, D2F2}]}},
+                 wait_message(1000)),
+
+    ok = file:delete(D2F2),
+    dirmon_watcher:update(S2),
+    ?assertEqual({ok, {pie, PRef, [{deleted, {"2", ".x"}, D2F2}]}},
+                 wait_message(1000)),
+
     timer:sleep(1000),
     print_mailbox(),
     ok.
@@ -223,14 +319,15 @@ key_maker(FileName) ->
     {RootName, Ext}.
 
 
-receive_event(Ref) ->
-    receive
-        {dirmon, Ref, Mess} -> Mess
-    end.
-
 wait_event(Ref, Timeout) ->
     receive
         {dirmon, Ref, Mess} -> {ok, Mess}
+    after Timeout -> {error, noevent}
+    end.
+
+wait_message(Timeout) ->
+    receive
+        Mess -> {ok, Mess}
     after Timeout -> {error, noevent}
     end.
 

@@ -154,11 +154,11 @@ sub_check(New, Chk, [N|Ns], [F=#file{basename = N}|Fs], Ds, Es, AFs, ADs) ->
 sub_check(New, Chk, [N|_]=Ns, [F=#file{basename = FN}|Fs], Ds, Es, AFs, ADs)
     when N > FN ->
     %% The file was deleted.
-    sub_check(New, Chk, Ns, Fs, Ds, [{removed, F}|Es], AFs, ADs);
+    sub_check(New, Chk, Ns, Fs, Ds, [{deleted, F}|Es], AFs, ADs);
 sub_check(New, Chk, [N|_]=Ns, Fs, [D=#directory{basename = DN}|Ds], Es, AFs, ADs)
     when N > DN ->
     %% The directory was deleted.
-    sub_check(New, Chk, Ns, Fs, Ds, [{removed, D}|Es], AFs, ADs);
+    sub_check(New, Chk, Ns, Fs, Ds, [{deleted, D}|Es], AFs, ADs);
 sub_check(New, Chk, [N|Ns], Fs, Ds, Es, AFs, ADs) ->
     %% N is a new file or directory.
     case X=New(N) of

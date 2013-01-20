@@ -1,1 +1,3 @@
 {incl_app, dirmon, details}.
+{incl_dirs_r, ["src", "test"]}.  
+{src_dirs, dirmon, ["src", "test"]}.  
