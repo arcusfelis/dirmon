@@ -81,16 +81,20 @@ update(Server) ->
 %% ------------------------------------------------------------------------
 
 init([DirName|Options]) ->
-    {ok, FileTree} = dirmon_lib:new(DirName),
-    Patterns = dirmon_pattern:new(),
-    CheckTimeout = proplists:get_value(check_timeout, Options, 5000),
-    ExitTimeout = proplists:get_value(exit_timeout, Options, infinity),
-    State = #state{file_tree = FileTree,
-                   last_scan_begun = erlang:localtime(),
-                   patterns = Patterns,
-                   exit_timeout = ExitTimeout},
-    timer:send_interval(CheckTimeout, check),
-    {ok, State}.
+    case dirmon_lib:new(DirName) of
+        {ok, FileTree} ->
+            Patterns = dirmon_pattern:new(),
+            CheckTimeout = proplists:get_value(check_timeout, Options, 5000),
+            ExitTimeout = proplists:get_value(exit_timeout, Options, infinity),
+            State = #state{file_tree = FileTree,
+                           last_scan_begun = erlang:localtime(),
+                           patterns = Patterns,
+                           exit_timeout = ExitTimeout},
+            timer:send_interval(CheckTimeout, check),
+            {ok, State};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 handle_call(#monitor_msg{pattern = Re, match = false},
             {ClientPid, _}, State=#state{patterns = PS}) ->

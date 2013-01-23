@@ -22,7 +22,11 @@
          simple_delete_event_case/0,
          simple_delete_event_case/1,
          pie_dynamic_watchers_case/0,
-         pie_dynamic_watchers_case/1
+         pie_dynamic_watchers_case/1,
+         pie_dynamic_watchers_monitor_than_add_watcher_case/0,
+         pie_dynamic_watchers_monitor_than_add_watcher_case/1,
+         no_dir_server_case/0,
+         no_dir_server_case/1
         ]).
 
 %-compile([{parse_transform, lager_transform}]).
@@ -87,12 +91,14 @@ groups() ->
     [{main_group, [], [
         simple_case,
         server_case,
+        no_dir_server_case,
         server_match_and_monitor_case,
         simple_delete_event_case,
         server_delete_event_case,
         server_delete2_event_case,
         pie_case,
-        pie_dynamic_watchers_case
+        pie_dynamic_watchers_case,
+        pie_dynamic_watchers_monitor_than_add_watcher_case
     ]}].
 
 all() ->
@@ -105,6 +111,9 @@ simple_case() ->
 server_case() ->
     [{require, common_conf, dirmon_common_config}].
 
+no_dir_server_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
 server_match_and_monitor_case() ->
     [{require, common_conf, dirmon_common_config}].
 
@@ -112,6 +121,9 @@ pie_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 pie_dynamic_watchers_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+pie_dynamic_watchers_monitor_than_add_watcher_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 server_delete_event_case() ->
@@ -213,6 +225,16 @@ server_case(Cfg) ->
     dirmon_watcher:update(S),
     ?assertEqual({ok, [{deleted, F1}]}, wait_event(Ref, 1000)),
 
+    ok.
+
+
+no_dir_server_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D666 = filename:join(DataDir, d666),
+    {ok, S2} = dirmon_watcher:start_link(D666),
+    dirmon_watcher:update(S2),
+    dirmon_watcher:update(S2),
+    dirmon_watcher:update(S2),
     ok.
 
 
@@ -345,6 +367,23 @@ pie_dynamic_watchers_case(Cfg) ->
 
     timer:sleep(1000),
     print_mailbox(),
+    ok.
+
+
+pie_dynamic_watchers_monitor_than_add_watcher_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D1 = filename:join(DataDir, d1),
+    D1F2 = filename:join(D1, "2.x"),
+    ensure_dir(D1),
+    ok = touch(D1F2),
+    {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
+    {ok, PRef} = dirmon_pie:monitor(P1),
+    {ok, S1} = dirmon_watcher:start_link(D1),
+    dirmon_pie:add_watcher(P1, S1),
+
+    %% `D1F2' is replaced by `D2F2'.
+    ?assertEqual({ok, {pie, PRef, [{added, {"2", ".x"}, D1F2}]}},
+                 wait_message(1000)),
     ok.
 
 

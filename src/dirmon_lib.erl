@@ -10,6 +10,7 @@
 
 -record(file, {basename, fullname, mtime}).
 -record(directory, {basename, fullname, mtime, sub_files, sub_directories}).
+-record(no_directory, {fullname}).
 
 
 new(FileName) ->
@@ -33,6 +34,8 @@ new(FileName) ->
                       fullname = FileName, 
                       mtime = MTime},
             {ok, F};
+        {error, enoent} ->
+            {ok, #no_directory{fullname = FileName}};
         {error, _Reason} = E ->
             E
     end.
@@ -92,6 +95,11 @@ check(X=#file{fullname = FileName, mtime = MTime}, _Time, Events) ->
         {error, _Reason} = E ->
             %% the directory was deleted.
             E
+    end;
+check(#no_directory{fullname = FileName}, _Time, Events) ->
+    case new(FileName) of
+        {ok, D} -> {ok, D, [{added, N} || N <- match_tree(D, "")] ++ Events};
+        E -> E
     end.
 
 
@@ -211,5 +219,7 @@ match_tree(D=#directory{}, Re) ->
     case re:run(N, Re, [{capture, none}]) of
         match   -> [N];
         nomatch -> []
-    end.
+    end;
+match_tree(#no_directory{}, _Re) ->
+    [].
     

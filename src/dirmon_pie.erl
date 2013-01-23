@@ -91,7 +91,7 @@ handle_call(#add_watcher{server = Watcher}, _,
         F = fun(_Key,X,Y) -> Y ++ X end,
         Key2FileNames2 = dict:merge(F, dict:from_list(Key2FN), Key2FileNames),
         %% Are there new files?
-        Events = dict:fold(fun(K,[FN],Acc) -> [{added,K,FN}|Acc];
+        Events = dict:fold(fun(K,[{_Num, FN}],Acc) -> [{added,K,FN}|Acc];
                           (_,_,Acc) -> Acc end, [], Key2FileNames2),
         inform_clients(Events, State),
         {reply, ok, State#state{key2filenames = Key2FileNames2,
