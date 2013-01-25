@@ -46,6 +46,7 @@
 start_link(Re, KeyMaker) ->
     gen_server:start_link(?MODULE, [Re, KeyMaker], []).
 
+%% @doc The watchers, added earlier, have higher prioriety.
 add_watcher(Server, Watcher) ->
     gen_server:call(Server, #add_watcher{server = Watcher}).
 
@@ -222,7 +223,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ----------------------------------------------------------------------
 
 inform_clients([_|_]=Events, #state{clients = [_|_]=Cs}) ->
-    io:format(user, "inform_clients~p ~p~n", [Cs,Events]),
+%   io:format(user, "inform_clients~p ~p~n", [Cs,Events]),
     [CPid!{pie,CRef,Events} || {CPid,CRef} <- Cs];
 inform_clients([], _) ->
     ok;

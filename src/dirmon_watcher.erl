@@ -160,8 +160,8 @@ check(State=#state{patterns = PS, file_tree = Tree,
     Patterns = dirmon_pattern:patterns(PS),
     StartTime = erlang:localtime(),
     {ok, Tree2, Events} = dirmon_lib:check(Tree, PrevTime, []),
-    io:format(user, "PrevTime: ~p~nPS: ~p~nTree: ~p~nTree2: ~p~n",
-              [PrevTime, PS, Tree, Tree2]),
+%   io:format(user, "PrevTime: ~p~nPS: ~p~nTree: ~p~nTree2: ~p~n",
+%             [PrevTime, PS, Tree, Tree2]),
     case Events of
         [] -> ok;
         _  -> [case dirmon_lib:match(Events, Re) of 
