@@ -50,6 +50,7 @@ start_link(DirName) ->
     start_link(DirName, []).
 
 %% `Options' are:
+%% - `check_timeout' - how often does the process scan the directory?
 %% The default value is 5000.
 %% - `exit_timeout' - the minimum period of time beetween X and Y.
 %% The default value is infinity.

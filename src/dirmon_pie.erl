@@ -8,6 +8,7 @@
 -export([start_link/2,
          monitor/1,
          monitor/2,
+         async_monitor/2,
          match_and_monitor/1,
          demonitor/2,
          add_watcher/2,
@@ -61,6 +62,11 @@ monitor(Server) ->
 
 monitor(Server, Pid) ->
     gen_server:call(Server, #monitor{match = false, client = Pid}).
+
+%% @doc Call `monitor/2' asynchronously.
+%% The same, as `spawn(fun() -> dirmon_pie:monitor(Server, Pid) end)'.
+async_monitor(Server, Pid) ->
+    gen_server:cast(Server, #monitor{match = false, client = Pid}).
 
 match_and_monitor(Server) ->
     gen_server:call(Server, #monitor{match = true}).
@@ -133,8 +139,10 @@ handle_call(#monitor{match = false, client = Pid}, {_Pid,Ref},
     {reply, {ok, Ref}, State#state{clients = [{Pid,Ref}|Cs]}}.
 
 
-handle_cast(_Mess, State) ->
-    {noreply, State}.
+handle_cast(#monitor{match = false, client = Pid}, 
+            State=#state{clients = Cs}) ->
+    Ref = make_ref(),
+    {noreply, State#state{clients = [{Pid,Ref}|Cs]}}.
 
 
 handle_info({dirmon, ServerRef, Events}, 
