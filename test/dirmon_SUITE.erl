@@ -26,7 +26,9 @@
          pie_dynamic_watchers_monitor_than_add_watcher_case/0,
          pie_dynamic_watchers_monitor_than_add_watcher_case/1,
          no_dir_server_case/0,
-         no_dir_server_case/1
+         no_dir_server_case/1,
+         kill_watcher_case/0,
+         kill_watcher_case/1
         ]).
 
 %-compile([{parse_transform, lager_transform}]).
@@ -98,7 +100,8 @@ groups() ->
         server_delete2_event_case,
         pie_case,
         pie_dynamic_watchers_case,
-        pie_dynamic_watchers_monitor_than_add_watcher_case
+        pie_dynamic_watchers_monitor_than_add_watcher_case,
+        kill_watcher_case
     ]}].
 
 all() ->
@@ -133,6 +136,9 @@ server_delete2_event_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 simple_delete_event_case() ->
+    [{require, common_conf, dirmon_common_config}].
+
+kill_watcher_case() ->
     [{require, common_conf, dirmon_common_config}].
 
 -include_lib("eunit/include/eunit.hrl").
@@ -383,6 +389,28 @@ pie_dynamic_watchers_monitor_than_add_watcher_case(Cfg) ->
 
     %% `D1F2' is replaced by `D2F2'.
     ?assertEqual({ok, {pie, PRef, [{added, {"2", ".x"}, D1F2}]}},
+                 wait_message(1000)),
+    ok.
+
+
+kill_watcher_case(Cfg) ->
+    DataDir = ?config(data_dir, Cfg),
+    D1 = filename:join(DataDir, d1),
+    D1F2 = filename:join(D1, "2.x"),
+    ensure_dir(D1),
+    ok = touch(D1F2),
+    {ok, P1} = dirmon_pie:start_link("\\.x$", fun key_maker/1),
+    {ok, PRef} = dirmon_pie:monitor(P1),
+    {ok, S1} = dirmon_watcher:start(D1),
+    dirmon_pie:add_watcher(P1, S1),
+
+    timer:sleep(1000),
+    exit(S1, sudden_death),
+
+    %% `D1F2' is replaced by `D2F2'.
+    ?assertEqual({ok, {pie, PRef, [{added, {"2", ".x"}, D1F2}]}},
+                 wait_message(1000)),
+    ?assertEqual({ok, {pie, PRef, [{deleted, {"2", ".x"}, D1F2}]}},
                  wait_message(1000)),
     ok.
 

@@ -4,6 +4,8 @@
 %% Client API
 -export([start_link/1,
          start_link/2,
+         start/1,
+         start/2,
          monitor/2,
          match_and_monitor/2,
          demonitor/2,
@@ -36,6 +38,13 @@
 %% ------------------------------------------------------------------------
 %% API functions
 %% ------------------------------------------------------------------------
+
+start(DirName) ->
+    start(DirName, []).
+
+start(DirName, Options) ->
+    gen_server:start(?MODULE, [DirName|Options], []).
+
 
 start_link(DirName) ->
     start_link(DirName, []).

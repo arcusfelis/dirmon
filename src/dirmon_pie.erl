@@ -7,6 +7,7 @@
 %% Client API
 -export([start_link/2,
          monitor/1,
+         monitor/2,
          match_and_monitor/1,
          demonitor/2,
          add_watcher/2,
@@ -34,7 +35,7 @@
 
 -record(add_watcher, {server}).
 -record(remove_watcher, {server}).
--record(monitor, {match}).
+-record(monitor, {match, client}).
 -record(demonitor, {reference}).
 
 -type server() :: gen_server:name().
@@ -50,11 +51,16 @@ start_link(Re, KeyMaker) ->
 add_watcher(Server, Watcher) ->
     gen_server:call(Server, #add_watcher{server = Watcher}).
 
+%% @doc Remove a directory watcher.
+%% Clients will receive information, about changes.
 remove_watcher(Server, Watcher) ->
     gen_server:call(Server, #remove_watcher{server = Watcher}).
 
 monitor(Server) ->
-    gen_server:call(Server, #monitor{match = false}).
+    gen_server:call(Server, #monitor{match = false, client = self()}).
+
+monitor(Server, Pid) ->
+    gen_server:call(Server, #monitor{match = false, client = Pid}).
 
 match_and_monitor(Server) ->
     gen_server:call(Server, #monitor{match = true}).
@@ -107,7 +113,7 @@ handle_call(#remove_watcher{server = Watcher}, _,
         erlang:demonitor(ProcMonRef, [flush]),
         dirmon_watcher:demonitor(Watcher, TagRef),
         io:format(user, "Delete server #~p~n", [Num]),
-        %% Are there new files?
+        %% Are there modified files?
         {Events, Key2FileNames2} = delete_server(Num, Key2FileNames),
         io:format(user, "Events: ~p~nKey2FileNames: ~p~nKey2FileNames2: ~p~n",
                   [Events, Key2FileNames, Key2FileNames2]),
@@ -117,12 +123,12 @@ handle_call(#remove_watcher{server = Watcher}, _,
     {error, unknown_watcher} ->
         {reply, {error, not_found}, State}
     end;
-handle_call(#monitor{match = true}, {Pid,Ref},
+handle_call(#monitor{match = true, client = Pid}, {_Pid,Ref},
             State=#state{clients = Cs, key2filenames = Key2FileNames}) ->
     Events = dict:fold(fun(K,[FN|_],Acc) -> [{added,K,FN}|Acc]
                        end, [], Key2FileNames),
     {reply, {ok, Ref, Events}, State#state{clients = [{Pid,Ref}|Cs]}};
-handle_call(#monitor{match = false}, {Pid,Ref},
+handle_call(#monitor{match = false, client = Pid}, {_Pid,Ref},
             State=#state{clients = Cs}) ->
     {reply, {ok, Ref}, State#state{clients = [{Pid,Ref}|Cs]}}.
 
@@ -139,7 +145,15 @@ handle_info({dirmon, ServerRef, Events},
     {Events2, Key2FileNames2} = 
         handle_events(Events, Key2FileNames, KeyMaker, ServerNum, []),
     inform_clients(Events2, State),
-    {noreply, State#state{key2filenames = Key2FileNames2}}.
+    {noreply, State#state{key2filenames = Key2FileNames2}};
+%% A watcher went down.
+handle_info({'DOWN',Ref,process,Pid,_Reason}, 
+            State=#state{watchers = WS, key2filenames = Key2FileNames}) ->
+    {ok, Pid, _TagRef, Ref, Num, WS2} =
+        dirmon_watchers:remove(Pid, WS),
+    {Events, Key2FileNames2} = delete_server(Num, Key2FileNames),
+    inform_clients(Events, State),
+    {noreply, State#state{key2filenames = Key2FileNames2, watchers = WS2}}.
 
 
 %% Handle events, those were delivered, using `{dirmon, ServerRef, Events2}'.
