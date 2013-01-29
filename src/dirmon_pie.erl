@@ -8,10 +8,11 @@
 -export([start_link/2,
          monitor/1,
          monitor/2,
-         async_monitor/2,
+         monitor_async/2,
          match_and_monitor/1,
          demonitor/2,
          add_watcher/2,
+         add_watcher_async/2,
          remove_watcher/2,
          update/1]).
          
@@ -52,6 +53,9 @@ start_link(Re, KeyMaker) ->
 add_watcher(Server, Watcher) ->
     gen_server:call(Server, #add_watcher{server = Watcher}).
 
+add_watcher_async(Server, Watcher) ->
+    gen_server:cast(Server, #add_watcher{server = Watcher}).
+
 %% @doc Remove a directory watcher.
 %% Clients will receive information, about changes.
 remove_watcher(Server, Watcher) ->
@@ -65,7 +69,7 @@ monitor(Server, Pid) ->
 
 %% @doc Call `monitor/2' asynchronously.
 %% The same, as `spawn(fun() -> dirmon_pie:monitor(Server, Pid) end)'.
-async_monitor(Server, Pid) ->
+monitor_async(Server, Pid) ->
     gen_server:cast(Server, #monitor{match = false, client = Pid}).
 
 match_and_monitor(Server) ->
@@ -142,7 +146,13 @@ handle_call(#monitor{match = false, client = Pid}, {_Pid,Ref},
 handle_cast(#monitor{match = false, client = Pid}, 
             State=#state{clients = Cs}) ->
     Ref = make_ref(),
-    {noreply, State#state{clients = [{Pid,Ref}|Cs]}}.
+    {noreply, State#state{clients = [{Pid,Ref}|Cs]}};
+
+handle_cast(M=#add_watcher{}, State=#state{}) ->
+    %% TODO: this looks like a hack.
+    {reply, _Reply, State2} = handle_call(M, undefined, State),
+    {noreply, State2}.
+
 
 
 handle_info({dirmon, ServerRef, Events}, 
