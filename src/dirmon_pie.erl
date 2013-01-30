@@ -26,7 +26,7 @@
 
 
 
--record(state, {
+-record(pie_state, {
         pattern, 
         watchers, 
         key_maker,
@@ -53,6 +53,8 @@ start_link(Re, KeyMaker) ->
 add_watcher(Server, Watcher) ->
     gen_server:call(Server, #add_watcher{server = Watcher}).
 
+%% @doc Call `add_watcher/2' in asynchronously.
+%% This function will do nothing, if the watcher is already added.
 add_watcher_async(Server, Watcher) ->
     gen_server:cast(Server, #add_watcher{server = Watcher}).
 
@@ -69,7 +71,7 @@ monitor(Server, Pid) ->
 
 %% @doc Call `monitor/2' asynchronously.
 %% The same, as `spawn(fun() -> dirmon_pie:monitor(Server, Pid) end)'.
-monitor_async(Server, Pid) ->
+monitor_async(Server, Pid) when is_pid(Pid) ->
     gen_server:cast(Server, #monitor{match = false, client = Pid}).
 
 match_and_monitor(Server) ->
@@ -86,14 +88,14 @@ update(Server) ->
 %% ------------------------------------------------------------------------
 
 init([Re, KeyMaker]) ->
-    State = #state{pattern = Re, key_maker = KeyMaker, 
+    State = #pie_state{pattern = Re, key_maker = KeyMaker, 
                    watchers = dirmon_watchers:new(), 
                    key2filenames = dict:new(),
                    clients = []},
     {ok, State}.
 
 handle_call(#add_watcher{server = Watcher}, _, 
-            State=#state{pattern = Re, watchers = WS, key_maker = KeyMaker,
+            State=#pie_state{pattern = Re, watchers = WS, key_maker = KeyMaker,
                          key2filenames = Key2FileNames}) ->
     io:format(user, "add_watcher: ~p~n", [Watcher]),
     case dirmon_watchers:exists(Watcher, WS) of
@@ -111,13 +113,13 @@ handle_call(#add_watcher{server = Watcher}, _,
         Events = dict:fold(fun(K,[{_Num, FN}],Acc) -> [{added,K,FN}|Acc];
                           (_,_,Acc) -> Acc end, [], Key2FileNames2),
         inform_clients(Events, State),
-        {reply, ok, State#state{key2filenames = Key2FileNames2,
+        {reply, ok, State#pie_state{key2filenames = Key2FileNames2,
                                        watchers = WS2}};
     true ->
         {reply, {error, already_added}, State}
     end;
 handle_call(#remove_watcher{server = Watcher}, _, 
-            State=#state{watchers = WS, key2filenames = Key2FileNames}) ->
+            State=#pie_state{watchers = WS, key2filenames = Key2FileNames}) ->
     case dirmon_watchers:remove(Watcher, WS) of
     {ok, _Pid, TagRef, ProcMonRef, Num, WS2} ->
         erlang:demonitor(ProcMonRef, [flush]),
@@ -128,27 +130,27 @@ handle_call(#remove_watcher{server = Watcher}, _,
         io:format(user, "Events: ~p~nKey2FileNames: ~p~nKey2FileNames2: ~p~n",
                   [Events, Key2FileNames, Key2FileNames2]),
         inform_clients(Events, State),
-        {reply, ok, State#state{key2filenames = Key2FileNames2,
+        {reply, ok, State#pie_state{key2filenames = Key2FileNames2,
                                 watchers = WS2}};
     {error, unknown_watcher} ->
         {reply, {error, not_found}, State}
     end;
 handle_call(#monitor{match = true, client = Pid}, {_Pid,Ref},
-            State=#state{clients = Cs, key2filenames = Key2FileNames}) ->
+            State=#pie_state{clients = Cs, key2filenames = Key2FileNames}) ->
     Events = dict:fold(fun(K,[FN|_],Acc) -> [{added,K,FN}|Acc]
                        end, [], Key2FileNames),
-    {reply, {ok, Ref, Events}, State#state{clients = [{Pid,Ref}|Cs]}};
+    {reply, {ok, Ref, Events}, State#pie_state{clients = [{Pid,Ref}|Cs]}};
 handle_call(#monitor{match = false, client = Pid}, {_Pid,Ref},
-            State=#state{clients = Cs}) ->
-    {reply, {ok, Ref}, State#state{clients = [{Pid,Ref}|Cs]}}.
+            State=#pie_state{clients = Cs}) ->
+    {reply, {ok, Ref}, State#pie_state{clients = [{Pid,Ref}|Cs]}}.
 
 
 handle_cast(#monitor{match = false, client = Pid}, 
-            State=#state{clients = Cs}) ->
+            State=#pie_state{clients = Cs}) ->
     Ref = make_ref(),
-    {noreply, State#state{clients = [{Pid,Ref}|Cs]}};
+    {noreply, State#pie_state{clients = [{Pid,Ref}|Cs]}};
 
-handle_cast(M=#add_watcher{}, State=#state{}) ->
+handle_cast(M=#add_watcher{}, State=#pie_state{}) ->
     %% TODO: this looks like a hack.
     {reply, _Reply, State2} = handle_call(M, undefined, State),
     {noreply, State2}.
@@ -156,22 +158,22 @@ handle_cast(M=#add_watcher{}, State=#state{}) ->
 
 
 handle_info({dirmon, ServerRef, Events}, 
-            State=#state{watchers = WS, key_maker = KeyMaker,
+            State=#pie_state{watchers = WS, key_maker = KeyMaker,
                          key2filenames = Key2FileNames}) ->
     io:format(user, "dirmon: ~p ~p~n", [ServerRef, Events]),
     {ok, ServerNum} = dirmon_watchers:tag_to_number(ServerRef, WS),
     {Events2, Key2FileNames2} = 
         handle_events(Events, Key2FileNames, KeyMaker, ServerNum, []),
     inform_clients(Events2, State),
-    {noreply, State#state{key2filenames = Key2FileNames2}};
+    {noreply, State#pie_state{key2filenames = Key2FileNames2}};
 %% A watcher went down.
 handle_info({'DOWN',Ref,process,Pid,_Reason}, 
-            State=#state{watchers = WS, key2filenames = Key2FileNames}) ->
+            State=#pie_state{watchers = WS, key2filenames = Key2FileNames}) ->
     {ok, Pid, _TagRef, Ref, Num, WS2} =
         dirmon_watchers:remove(Pid, WS),
     {Events, Key2FileNames2} = delete_server(Num, Key2FileNames),
     inform_clients(Events, State),
-    {noreply, State#state{key2filenames = Key2FileNames2, watchers = WS2}}.
+    {noreply, State#pie_state{key2filenames = Key2FileNames2, watchers = WS2}}.
 
 
 %% Handle events, those were delivered, using `{dirmon, ServerRef, Events2}'.
@@ -254,12 +256,12 @@ code_change(_OldVsn, State, _Extra) ->
 %% Helpers
 %% ----------------------------------------------------------------------
 
-inform_clients([_|_]=Events, #state{clients = [_|_]=Cs}) ->
+inform_clients([_|_]=Events, #pie_state{clients = [_|_]=Cs}) ->
 %   io:format(user, "inform_clients~p ~p~n", [Cs,Events]),
     [CPid!{pie,CRef,Events} || {CPid,CRef} <- Cs];
 inform_clients([], _) ->
     ok;
-inform_clients([_|_]=_Events, #state{clients = []}) ->
+inform_clients([_|_]=_Events, #pie_state{clients = []}) ->
     io:format(user, "inform_clients<ignore> ~p~n", [_Events]),
     ok.
 
@@ -282,7 +284,7 @@ delete_server(Num, Key2FileNames) ->
     %% Elems are new elems.
     %% FileNames are deleted filenames.
     KEF = dict:fold(delete_server_iter(Num), [], Key2FileNames),
-    io:format(user, "KEF: ~p~n", [KEF]),
+%   io:format(user, "KEF: ~p~n", [KEF]),
     Key2FileNames2 = update_server_dict(KEF, Key2FileNames),
     Events = collect_server_events(KEF, Num),
     {Events, Key2FileNames2}.

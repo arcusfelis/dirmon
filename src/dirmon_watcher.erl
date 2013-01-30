@@ -21,7 +21,7 @@
 
 
 
--record(state, {
+-record(watcher_state, {
     file_tree, 
     last_scan_begun,
     patterns, 
@@ -96,7 +96,7 @@ init([DirName|Options]) ->
             Patterns = dirmon_pattern:new(),
             CheckTimeout = proplists:get_value(check_timeout, Options, 5000),
             ExitTimeout = proplists:get_value(exit_timeout, Options, infinity),
-            State = #state{file_tree = FileTree,
+            State = #watcher_state{file_tree = FileTree,
                            last_scan_begun = erlang:localtime(),
                            patterns = Patterns,
                            exit_timeout = ExitTimeout},
@@ -107,19 +107,19 @@ init([DirName|Options]) ->
     end.
 
 handle_call(#monitor_msg{pattern = Re, match = false},
-            {ClientPid, _}, State=#state{patterns = PS}) ->
+            {ClientPid, _}, State=#watcher_state{patterns = PS}) ->
     {ok, PS2, Ref, _} = dirmon_pattern:add(PS, Re, ClientPid), %% usb is better!
-    {reply, {ok, Ref}, State#state{patterns = PS2}};
+    {reply, {ok, Ref}, State#watcher_state{patterns = PS2}};
 handle_call(#monitor_msg{pattern = Re, match = true},
-            {ClientPid, _}, State=#state{file_tree = Tree, patterns = PS}) ->
+            {ClientPid, _}, State=#watcher_state{file_tree = Tree, patterns = PS}) ->
     {ok, PS2, Ref, CompiledRe} = dirmon_pattern:add(PS, Re, ClientPid),
     Match = dirmon_lib:match_tree(Tree, CompiledRe),
-    {reply, {ok, Match, Ref}, State#state{patterns = PS2}};
-handle_call(#demonitor_msg{ref = Ref}, _, State=#state{patterns = PS}) ->
+    {reply, {ok, Match, Ref}, State#watcher_state{patterns = PS2}};
+handle_call(#demonitor_msg{ref = Ref}, _, State=#watcher_state{patterns = PS}) ->
     erlang:demonitor(Ref, [flush]),
     {ok, PS2} = dirmon_pattern:unregister_reference(PS, Ref),
-    {reply, {ok, Ref}, State#state{patterns = PS2}};
-handle_call(update, _, State=#state{}) ->
+    {reply, {ok, Ref}, State#watcher_state{patterns = PS2}};
+handle_call(update, _, State=#watcher_state{}) ->
     {reply, ok, check(State)}.
 
 handle_cast(_Mess, State) ->
@@ -132,13 +132,13 @@ handle_cast(_Mess, State) ->
 %% The idea is to evaluate `exit_timeout' and `check_timeout' using only
 %% one timeout.
 handle_info(check, 
-            State=#state{patterns = PS,
+            State=#watcher_state{patterns = PS,
                          last_timeout_check = LastCheck,
                          exit_timeout = ExitTimeout,
                          check_timeout = CheckTimeout}) ->
     case dirmon_pattern:is_empty(PS) of
     %% There are clients, work as usual.
-    false -> {noreply, check(State#state{last_timeout_check=timestamp_ms()})};
+    false -> {noreply, check(State#watcher_state{last_timeout_check=timestamp_ms()})};
     %% Ignore exit timeout.
     true when ExitTimeout =:= infinity -> {noreply, State};
     true ->
@@ -154,9 +154,9 @@ handle_info(check,
         end
     end;
 %% The client is dead.
-handle_info({'DOWN', MonitorRef, _, _, _}, State=#state{patterns = PS}) ->
+handle_info({'DOWN', MonitorRef, _, _, _}, State=#watcher_state{patterns = PS}) ->
     {ok, PS2} = dirmon_pattern:unregister_reference(PS, MonitorRef),
-    {noreply, State#state{patterns = PS2}}.
+    {noreply, State#watcher_state{patterns = PS2}}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -165,7 +165,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-check(State=#state{patterns = PS, file_tree = Tree,
+check(State=#watcher_state{patterns = PS, file_tree = Tree,
                    last_scan_begun = PrevTime}) ->
     Patterns = dirmon_pattern:patterns(PS),
     StartTime = erlang:localtime(),
@@ -179,7 +179,7 @@ check(State=#state{patterns = PS, file_tree = Tree,
                     [_|_]=Match -> Inf(Match)
                end || {Re, Inf} <- Patterns]
     end,
-    State#state{file_tree = Tree2, last_scan_begun = StartTime}.
+    State#watcher_state{file_tree = Tree2, last_scan_begun = StartTime}.
 
 timestamp_ms() ->
     timestamp() div 1000.
